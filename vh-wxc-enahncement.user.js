@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         Webex Calling - MPP Apply Config
+// @name         Webex Calling - Bulk MPP Apply Config and Reboot
 // @namespace    https://avholloway.com/
 // @version      0.1
-// @description  Trying to add an Apply Config feature to the Device > Search page
+// @description  Adds Apply Config and Reboot buttons Device > Search page's bulk action bar
 // @author       Anthony Holloway
 // @match        https://admin.webex.com/*
 // @require      https://code.jquery.com/jquery-3.6.4.min.js
@@ -13,12 +13,14 @@
 // @grant        GM_xmlhttpRequest
 // ==/UserScript==
 
-let access_token = '', org_id = '';
+let access_token = '';
 
 (function() {
     'use strict';
+    console.log('wxc mpp bulk script is loaded');
     if (window.onurlchange === null) {
         window.addEventListener('urlchange', e => {
+            console.log('url change detected: ', e.url);
             if (e.url === 'https://admin.webex.com/devices/search') {
                 device_search_page();
             }
@@ -27,8 +29,9 @@ let access_token = '', org_id = '';
 })();
 
 const device_search_page = () => {
+    console.log('user is looking at the device search page');
+
     access_token = unsafeWindow.sessionStorage.accessToken;
-    org_id = unsafeWindow.sessionStorage.userOrgId; // `ciscospark://us/ORGANIZATION/${org_id}`
     if (!access_token) return;
 
     waitForKeyElements('mch-bulk-actions-bar div.action-container button[aria-label="Edit"]', element => {
@@ -39,7 +42,6 @@ const device_search_page = () => {
         // Apply Config Button
         const apply_config_button = element.parent().clone();
         insertion_point.prepend(apply_config_button);
-
         $('button', apply_config_button)
             .attr({
                 'id': 'my-custom-apply-config-button',
@@ -65,27 +67,26 @@ const device_search_page = () => {
         $('span span', reboot_phones_button).text('Reboot Phones');
         reboot_phones_button.click(do_reboot_phones);
 
+        console.log('created apply config and reboot bulk action buttons');
+
         return false;
     }, true);
 }
 
 const do_apply_config = () => {
+    console.log('apply config button clicked');
     $('p-tablecheckbox').each(function(index) {
         const phone = $(this)[0].__ngContext__[26] || {};
         if (phone.deviceType === 'ipphone') {
             const checkbox = $('input[type="checkbox"]', $(this))[0];
             if (checkbox.checked) {
+                console.log(`resyncing ${phone.displayName}`);
                 GM_xmlhttpRequest({
                     method: 'POST',
                     url: `https://webexapis.com/v1/telephony/config/devices/${phone.deviceId}/actions/applyChanges/invoke`,
                     headers: {
-                        'Authorization': `Bearer ${access_token}`
-                    },
-                    onload: function(response) {
-                        console.log('Apply Config:', phone.displayName, phone.deviceId, response.status);
-                    },
-                    onerror: function(response) {
-                        console.log('Apply Config:', phone.displayName, phone.deviceId, response.status, response.responseText);
+                        'Authorization': `Bearer ${access_token}`,
+                        'Content-Type': 'application/json'
                     }
                 });
             }
@@ -94,11 +95,13 @@ const do_apply_config = () => {
 }
 
 const do_reboot_phones = () => {
+    console.log('reboot phones button clicked');
     $('p-tablecheckbox').each(function(index) {
         const phone = $(this)[0].__ngContext__[26] || {};
         if (phone.deviceType === 'ipphone') {
             const checkbox = $('input[type="checkbox"]', $(this))[0];
             if (checkbox.checked) {
+                console.log(`rebooting ${phone.displayName}`);
                 const device_id = phone.wdmUrl.split('\/').pop();
                 const encoded_device_id = btoa(`ciscospark://urn:TEAM:us-west-2_r/DEVICE/${device_id}`);
                 const payload = {
@@ -114,13 +117,7 @@ const do_reboot_phones = () => {
                         'Authorization': `Bearer ${access_token}`,
                         'Content-Type': 'application/json'
                     },
-                    data: JSON.stringify(payload),
-                    onload: function(response) {
-                        console.log('Reboot Phone:', phone.displayName, device_id, response.status, response.responseText);
-                    },
-                    onerror: function(response) {
-                        console.log('Reboot Phone:', phone.displayName, device_id, response.status, response.responseText);
-                    }
+                    data: JSON.stringify(payload)
                 });
             }
         }
